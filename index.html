@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI API Documentation Assistant — generate docs and chat with your API spec." />
+  <title>API Docs Assistant</title>
+  <link rel="stylesheet" href="src/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📘</text></svg>" />
+</head>
+<body>
+  <!-- ============ Onboarding overlay ============ -->
+  <div id="onboarding" class="overlay hidden" aria-hidden="true">
+    <div class="onboarding-card" role="dialog" aria-modal="true" aria-labelledby="ob-title">
+      <button id="onboarding-skip" class="onboarding-skip" title="Skip the tour and start using the app">Skip</button>
+      <div class="onboarding-emoji" id="ob-emoji">📥</div>
+      <h2 id="ob-title">Step 1 — Load your spec</h2>
+      <p id="ob-body">
+        A "spec" is just a file that describes your API — its endpoints, inputs, and outputs.
+        Paste it, fetch it from a link, or point us at a GitHub repo. New here? Click
+        <strong>"Load sample"</strong> to try the built-in TaskFlow API.
+      </p>
+      <div class="onboarding-dots">
+        <span class="dot active" data-step="0"></span>
+        <span class="dot" data-step="1"></span>
+        <span class="dot" data-step="2"></span>
+      </div>
+      <div class="onboarding-actions">
+        <button id="onboarding-back" class="btn btn-ghost hidden">Back</button>
+        <button id="onboarding-next" class="btn btn-primary">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ App shell ============ -->
+  <div class="app">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <span class="brand-mark">{ }</span>
+          <span class="brand-text">API Assistant</span>
+        </div>
+        <button id="sidebar-close" class="icon-btn mobile-only" title="Close menu" aria-label="Close menu">✕</button>
+      </div>
+
+      <!-- Spec status -->
+      <section class="side-section">
+        <h3 class="side-title">Spec status</h3>
+        <div id="spec-status" class="spec-status empty" title="Shows whether an API spec is currently loaded">
+          <span class="status-dot"></span>
+          <span id="spec-status-text">No spec loaded</span>
+        </div>
+        <button id="open-loader-btn" class="btn btn-block btn-primary" title="Open the panel to paste, fetch, or import an API spec">Load a spec</button>
+      </section>
+
+      <!-- Coverage summary -->
+      <section class="side-section" id="coverage-summary-section" hidden>
+        <h3 class="side-title">Coverage score</h3>
+        <div class="coverage-score-wrap" title="A 0-100 score of how completely your API is documented">
+          <div id="coverage-ring" class="coverage-ring"><span id="coverage-score">--</span></div>
+          <button id="open-coverage-btn" class="btn btn-ghost btn-sm" title="Open the full documentation coverage report">View report</button>
+        </div>
+      </section>
+
+      <!-- Endpoint list -->
+      <section class="side-section endpoints-section">
+        <h3 class="side-title">Endpoints <span id="endpoint-count" class="count-badge">0</span></h3>
+        <div id="endpoint-list" class="endpoint-list" title="Click any endpoint to ask the assistant about it">
+          <p class="muted small">Load a spec to see your endpoints here.</p>
+        </div>
+      </section>
+
+      <!-- Quick questions -->
+      <section class="side-section">
+        <h3 class="side-title">Quick questions</h3>
+        <div class="chips" id="quick-chips">
+          <button class="chip" data-q="How do I authenticate with this API?" title="Ask how authentication works">Authentication</button>
+          <button class="chip" data-q="List all the endpoints in this API." title="Ask for a list of all endpoints">List endpoints</button>
+          <button class="chip" data-q="Show me a cURL example for a common request." title="Ask for a ready-to-run cURL command">cURL example</button>
+          <button class="chip" data-q="What error codes can this API return and what do they mean?" title="Ask about possible error responses">Error codes</button>
+          <button class="chip" data-q="What is the base URL for this API?" title="Ask for the API base URL">Base URL</button>
+          <button class="chip" data-q="What headers are required for requests?" title="Ask which HTTP headers are required">Required headers</button>
+        </div>
+      </section>
+
+      <div class="sidebar-footer">
+        <button id="open-settings-btn" class="btn btn-ghost btn-block" title="Set your Claude API key and Confluence credentials">⚙ Settings</button>
+        <button id="restart-tour-btn" class="btn btn-ghost btn-block btn-sm" title="Replay the 3-step getting-started tour">Replay tour</button>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <header class="topbar">
+        <button id="sidebar-toggle" class="icon-btn" title="Show or hide the sidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="mode-switch" role="tablist" aria-label="App mode">
+          <button id="mode-chat" class="mode-btn active" role="tab" title="Ask plain-English questions about your API">💬 Chat</button>
+          <button id="mode-docs" class="mode-btn" role="tab" title="Generate full Markdown documentation from your spec">📄 Generate Docs</button>
+        </div>
+        <div class="topbar-actions">
+          <button id="open-loader-btn-top" class="btn btn-ghost btn-sm" title="Load or replace the current API spec">＋ Spec</button>
+        </div>
+      </header>
+
+      <!-- CHAT VIEW -->
+      <section id="view-chat" class="view view-chat">
+        <div id="chat-empty" class="empty-state">
+          <div class="empty-emoji">💬</div>
+          <h2>Chat with your API</h2>
+          <p>Load a specification, then ask anything in plain English — "How do I create a task?", "What auth do I need?". Answers come straight from your spec.</p>
+          <button class="btn btn-primary" id="empty-load-btn" title="Open the spec loader to get started">Load a spec to begin</button>
+          <button class="btn btn-ghost" id="empty-sample-btn" title="Load the built-in TaskFlow sample API">Or try the sample API</button>
+        </div>
+
+        <div id="chat-log" class="chat-log" hidden></div>
+
+        <div id="chat-composer" class="composer" hidden>
+          <textarea id="chat-input" class="chat-input" rows="1" placeholder="Ask about your API…" title="Type a question about your API and press Enter to send"></textarea>
+          <button id="chat-send" class="btn btn-primary send-btn" title="Send your question to the assistant">Send</button>
+        </div>
+      </section>
+
+      <!-- DOCS VIEW -->
+      <section id="view-docs" class="view view-docs" hidden>
+        <div id="docs-empty" class="empty-state">
+          <div class="empty-emoji">📄</div>
+          <h2>Generate developer docs</h2>
+          <p>Turn your spec into complete, production-ready Markdown documentation — overview, every endpoint, code samples, and test cases — in one click.</p>
+          <button class="btn btn-primary" id="docs-empty-load-btn" title="Open the spec loader to get started">Load a spec first</button>
+        </div>
+
+        <div id="docs-workspace" class="docs-workspace" hidden>
+          <div class="docs-toolbar">
+            <button id="generate-docs-btn" class="btn btn-primary" title="Send your spec to the AI and generate full documentation">✨ Generate Docs</button>
+            <div class="spacer"></div>
+            <button id="copy-docs-btn" class="btn btn-ghost btn-sm" title="Copy the Markdown documentation to your clipboard" disabled>Copy</button>
+            <button id="download-docs-btn" class="btn btn-ghost btn-sm" title="Download the documentation as a .md file" disabled>Download .md</button>
+            <button id="export-confluence-btn" class="btn btn-ghost btn-sm" title="Publish these docs to a Confluence page" disabled>Export to Confluence</button>
+          </div>
+          <div class="split-pane">
+            <div class="pane">
+              <div class="pane-label">Markdown source</div>
+              <textarea id="docs-markdown" class="docs-markdown" spellcheck="false" placeholder="Generated Markdown will appear here. You can edit it before exporting." title="The raw Markdown — edit it freely before copying or exporting"></textarea>
+            </div>
+            <div class="pane">
+              <div class="pane-label">Preview</div>
+              <div id="docs-preview" class="docs-preview markdown-body"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============ Spec loader modal ============ -->
+  <div id="loader-modal" class="modal-backdrop hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="loader-title">
+      <div class="modal-head">
+        <h2 id="loader-title">Load your API spec</h2>
+        <button class="icon-btn modal-close" data-close title="Close this panel">✕</button>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="paste" title="Paste raw JSON or YAML">Paste</button>
+        <button class="tab" data-tab="url" title="Fetch a spec from a public URL">From URL</button>
+        <button class="tab" data-tab="github" title="Import from a GitHub repository">GitHub repo</button>
+      </div>
+
+      <div class="tab-panel active" data-panel="paste">
+        <p class="muted small">Paste OpenAPI 3.x, Swagger 2.0, or a Postman Collection (v2.1) — JSON or YAML.</p>
+        <textarea id="paste-input" class="mono-input" rows="10" placeholder='{ "openapi": "3.0.0", ... }' title="Paste your raw spec text here"></textarea>
+        <div class="modal-actions">
+          <button id="load-sample-btn" class="btn btn-ghost" title="Fill this box with the built-in TaskFlow sample spec">Load sample</button>
+          <button id="parse-paste-btn" class="btn btn-primary" title="Read and load the pasted spec">Load this spec</button>
+        </div>
+      </div>
+
+      <div class="tab-panel" data-panel="url">
+        <p class="muted small">Enter a direct link to a raw spec file (must allow cross-origin requests).</p>
+        <input id="url-input" class="text-input" type="url" placeholder="https://example.com/openapi.json" title="Direct URL to a raw spec file" />
+        <div class="modal-actions">
+          <button id="fetch-url-btn" class="btn btn-primary" title="Download and load the spec from this URL">Fetch &amp; load</button>
+        </div>
+      </div>
+
+      <div class="tab-panel" data-panel="github">
+        <p class="muted small">Paste a GitHub repo URL. We'll look for a spec file; if there isn't one, we'll read your route files and let the AI infer the endpoints.</p>
+        <input id="github-input" class="text-input" type="url" placeholder="https://github.com/owner/repo" title="A public GitHub repository URL" />
+        <div class="modal-actions">
+          <button id="fetch-github-btn" class="btn btn-primary" title="Scan the repository for an API spec or route files">Scan repository</button>
+        </div>
+        <div id="github-results" class="github-results" hidden></div>
+      </div>
+
+      <div id="loader-status" class="loader-status" hidden></div>
+    </div>
+  </div>
+
+  <!-- ============ Coverage report modal ============ -->
+  <div id="coverage-modal" class="modal-backdrop hidden">
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="coverage-title">
+      <div class="modal-head">
+        <h2 id="coverage-title">Coverage report</h2>
+        <button class="icon-btn modal-close" data-close title="Close this panel">✕</button>
+      </div>
+      <div class="coverage-top">
+        <div id="coverage-ring-lg" class="coverage-ring coverage-ring-lg"><span id="coverage-score-lg">--</span></div>
+        <div class="coverage-legend">
+          <p id="coverage-summary-text" class="muted">Load a spec to scan for missing documentation.</p>
+          <div class="filter-row">
+            <span class="muted small">Filter:</span>
+            <button class="filter-btn active" data-sev="all" title="Show all findings">All</button>
+            <button class="filter-btn" data-sev="High" title="Show only high-severity findings">High</button>
+            <button class="filter-btn" data-sev="Medium" title="Show only medium-severity findings">Medium</button>
+            <button class="filter-btn" data-sev="Low" title="Show only low-severity findings">Low</button>
+          </div>
+        </div>
+      </div>
+      <div id="coverage-findings" class="coverage-findings"></div>
+    </div>
+  </div>
+
+  <!-- ============ Settings modal ============ -->
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-head">
+        <h2 id="settings-title">Settings</h2>
+        <button class="icon-btn modal-close" data-close title="Close this panel">✕</button>
+      </div>
+
+      <div class="settings-group">
+        <h3 class="side-title">Claude API</h3>
+        <label class="field-label" for="api-key-input" title="Your Anthropic API key, used to call Claude from your browser">Anthropic API key</label>
+        <input id="api-key-input" class="text-input" type="password" placeholder="sk-ant-…" title="Stored only in this browser's local storage" />
+        <p class="warn-text">⚠ Stored in your browser's localStorage on this device only. Calls go directly from your browser to the Claude API. Leave blank if your environment proxies authentication.</p>
+      </div>
+
+      <div class="settings-group">
+        <h3 class="side-title">Confluence</h3>
+        <label class="field-label" for="conf-base">Base URL</label>
+        <input id="conf-base" class="text-input" type="url" placeholder="https://your-team.atlassian.net" title="Your Confluence site URL" />
+        <label class="field-label" for="conf-space">Space key</label>
+        <input id="conf-space" class="text-input" type="text" placeholder="DEV" title="The space key where the page will be created" />
+        <label class="field-label" for="conf-email">Account email</label>
+        <input id="conf-email" class="text-input" type="email" placeholder="you@team.com" title="The email of your Atlassian account" />
+        <label class="field-label" for="conf-token">API token</label>
+        <input id="conf-token" class="text-input" type="password" placeholder="Atlassian API token" title="Create one at id.atlassian.com — stored locally only" />
+        <p class="warn-text">⚠ Credentials are saved in localStorage on this device only. Never use this on a shared computer.</p>
+      </div>
+
+      <div class="modal-actions">
+        <button id="save-settings-btn" class="btn btn-primary" title="Save these settings to this browser">Save settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Confluence export modal ============ -->
+  <div id="confluence-modal" class="modal-backdrop hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="conf-title">
+      <div class="modal-head">
+        <h2 id="conf-title">Export to Confluence</h2>
+        <button class="icon-btn modal-close" data-close title="Close this panel">✕</button>
+      </div>
+      <label class="field-label" for="conf-page-title">Page title</label>
+      <input id="conf-page-title" class="text-input" type="text" placeholder="API Documentation" title="The title of the Confluence page to create" />
+      <p class="muted small">Uses the Base URL, Space key, email, and token from Settings. Missing any? You can copy the markup instead.</p>
+      <div class="modal-actions">
+        <button id="copy-confluence-btn" class="btn btn-ghost" title="Copy the Confluence storage-format markup to paste manually">Copy Confluence markup</button>
+        <button id="publish-confluence-btn" class="btn btn-primary" title="Create the page in Confluence now">Publish page</button>
+      </div>
+      <div id="confluence-status" class="loader-status" hidden></div>
+    </div>
+  </div>
+
+  <!-- ============ Toasts ============ -->
+  <div id="toast-host" class="toast-host" aria-live="polite"></div>
+
+  <!-- Mobile backdrop for off-canvas sidebar -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
+
+  <script src="src/app.js" defer></script>
+</body>
+</html>

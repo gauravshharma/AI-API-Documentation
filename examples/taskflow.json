@@ -1,0 +1,269 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "TaskFlow API",
+    "version": "1.0.0",
+    "description": "TaskFlow is a lightweight task and project management API. It lets teams authenticate, create and manage tasks, and organize them into projects. All endpoints (except token issuance) require a Bearer JWT in the Authorization header."
+  },
+  "servers": [
+    { "url": "https://api.taskflow.dev/v1", "description": "Production" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT obtained from POST /auth/token. Send as: Authorization: Bearer <token>"
+      }
+    },
+    "schemas": {
+      "Task": {
+        "type": "object",
+        "properties": {
+          "task_id": { "type": "string", "example": "tsk_8f23a1c9" },
+          "title": { "type": "string", "example": "Ship onboarding flow" },
+          "description": { "type": "string", "example": "Implement the 3-step first-run overlay and wire up analytics." },
+          "status": { "type": "string", "enum": ["todo", "in_progress", "done"], "example": "in_progress" },
+          "priority": { "type": "string", "enum": ["low", "medium", "high"], "example": "high" },
+          "project_id": { "type": "string", "example": "prj_4421" },
+          "due_date": { "type": "string", "format": "date", "example": "2026-07-15" },
+          "created_at": { "type": "string", "format": "date-time", "example": "2026-06-01T09:30:00Z" }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "project_id": { "type": "string", "example": "prj_4421" },
+          "name": { "type": "string", "example": "Q3 Launch" },
+          "description": { "type": "string", "example": "All work related to the third-quarter product launch." },
+          "owner_email": { "type": "string", "format": "email", "example": "dana@taskflow.dev" },
+          "task_count": { "type": "integer", "example": 12 }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "example": "invalid_request" },
+          "message": { "type": "string", "example": "The 'title' field is required." }
+        }
+      }
+    }
+  },
+  "security": [ { "bearerAuth": [] } ],
+  "paths": {
+    "/auth/token": {
+      "post": {
+        "summary": "Issue an access token",
+        "description": "Exchanges API credentials for a short-lived JWT access token used to authorize all other requests.",
+        "operationId": "createToken",
+        "security": [],
+        "tags": ["Auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["client_id", "client_secret"],
+                "properties": {
+                  "client_id": { "type": "string", "example": "cli_live_3a9f" },
+                  "client_secret": { "type": "string", "example": "sec_2f7d8b1e4c6a" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token issued successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "access_token": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbGlfbGl2ZV8zYTlmIn0.s9Qm" },
+                    "token_type": { "type": "string", "example": "Bearer" },
+                    "expires_in": { "type": "integer", "example": 3600 }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid client credentials.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "summary": "List tasks",
+        "description": "Returns a paginated list of tasks visible to the authenticated client. Supports filtering by status and project.",
+        "operationId": "listTasks",
+        "tags": ["Tasks"],
+        "parameters": [
+          { "name": "status", "in": "query", "required": false, "description": "Filter by task status.", "schema": { "type": "string", "enum": ["todo", "in_progress", "done"] } },
+          { "name": "project_id", "in": "query", "required": false, "description": "Return only tasks belonging to this project.", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "required": false, "description": "Maximum number of results (1-100).", "schema": { "type": "integer", "example": 25 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A list of tasks.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Task" } },
+                    "total": { "type": "integer", "example": 42 }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "summary": "Create a task",
+        "description": "Creates a new task. The title is required; all other fields are optional and default sensibly.",
+        "operationId": "createTask",
+        "tags": ["Tasks"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": { "type": "string", "example": "Write release notes" },
+                  "description": { "type": "string", "example": "Summarize the v1.2 changes for the changelog." },
+                  "priority": { "type": "string", "enum": ["low", "medium", "high"], "example": "medium" },
+                  "project_id": { "type": "string", "example": "prj_4421" },
+                  "due_date": { "type": "string", "format": "date", "example": "2026-07-20" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task created.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } }
+          },
+          "400": { "description": "Validation error.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/tasks/{task_id}": {
+      "get": {
+        "summary": "Get a task",
+        "description": "Retrieves a single task by its unique identifier.",
+        "operationId": "getTask",
+        "tags": ["Tasks"],
+        "parameters": [
+          { "name": "task_id", "in": "path", "required": true, "description": "The unique identifier of the task.", "schema": { "type": "string", "example": "tsk_8f23a1c9" } }
+        ],
+        "responses": {
+          "200": { "description": "The requested task.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "404": { "description": "Task not found.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "patch": {
+        "summary": "Update a task",
+        "description": "Partially updates a task. Only the supplied fields are changed.",
+        "operationId": "updateTask",
+        "tags": ["Tasks"],
+        "parameters": [
+          { "name": "task_id", "in": "path", "required": true, "description": "The unique identifier of the task.", "schema": { "type": "string", "example": "tsk_8f23a1c9" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string", "example": "Write final release notes" },
+                  "status": { "type": "string", "enum": ["todo", "in_progress", "done"], "example": "done" },
+                  "priority": { "type": "string", "enum": ["low", "medium", "high"], "example": "high" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated task.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "404": { "description": "Task not found.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "delete": {
+        "summary": "Delete a task",
+        "description": "Permanently deletes a task. This action cannot be undone.",
+        "operationId": "deleteTask",
+        "tags": ["Tasks"],
+        "parameters": [
+          { "name": "task_id", "in": "path", "required": true, "description": "The unique identifier of the task.", "schema": { "type": "string", "example": "tsk_8f23a1c9" } }
+        ],
+        "responses": {
+          "204": { "description": "Task deleted. No content returned." },
+          "404": { "description": "Task not found.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "summary": "List projects",
+        "description": "Returns all projects the authenticated client can access.",
+        "operationId": "listProjects",
+        "tags": ["Projects"],
+        "responses": {
+          "200": {
+            "description": "A list of projects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } },
+                    "total": { "type": "integer", "example": 3 }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "summary": "Create a project",
+        "description": "Creates a new project that tasks can be assigned to.",
+        "operationId": "createProject",
+        "tags": ["Projects"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "example": "Q3 Launch" },
+                  "description": { "type": "string", "example": "All work related to the third-quarter product launch." },
+                  "owner_email": { "type": "string", "format": "email", "example": "dana@taskflow.dev" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Project created.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Project" } } } },
+          "400": { "description": "Validation error.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  }
+}
